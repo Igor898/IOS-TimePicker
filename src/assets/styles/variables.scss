@@ -1,0 +1,17 @@
+:root {
+    // Светлая тема (по умолчанию)
+    --tg-theme-bg-color: #FFF;
+    --tg-theme-secondary-bg-color: #F3F2F8;
+    --tg-theme-text-color: #111;
+    --tg-theme-button-color: #59B7FF;
+    --tg-theme-hint-color: #777;
+  
+    // Темная тема
+    .dark-theme {
+      --tg-theme-bg-color: #1c1c1e;
+      --tg-theme-secondary-bg-color: #2c2c2e;
+      --tg-theme-text-color: #ffffff;
+      --tg-theme-button-color: #0a84ff;
+      --tg-theme-hint-color: #8e8e93;
+    }
+  }
