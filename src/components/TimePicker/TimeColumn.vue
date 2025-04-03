@@ -10,7 +10,34 @@ const props = defineProps({
   items: { type: Array, default: null },
   isBoolean: { type: Boolean, default: false }
 })
-
+function getItemStyle(index: number) {
+  const centerIndex = selectedIndex.value
+  const distance = Math.abs(index - centerIndex)
+  const maxDistance = 5
+  
+  // Эффект "всасывания" в черные дыры
+  if (distance > maxDistance) {
+    return {
+      opacity: 0,
+      transform: 'scale(0.1)',
+      filter: 'blur(5px)'
+    }
+  }
+  
+  // Плавное изменение для ближайших элементов
+  const ratio = distance / maxDistance
+  const scale = 1 - ratio * 0.5
+  const opacity = 1 - ratio * 0.8
+  const blur = ratio * 3
+  const rotateX = ratio * 60 * (index < centerIndex ? 1 : -1)
+  
+  return {
+    opacity,
+    transform: `scale(${scale}) rotateX(${rotateX}deg)`,
+    filter: `blur(${blur}px)`,
+    zIndex: maxDistance - distance
+  }
+}
 const emit = defineEmits(['update:modelValue'])
 
 const columnRef = ref<HTMLElement | null>(null)
@@ -109,21 +136,25 @@ onMounted(() => {
     class="time-column"
     ref="columnRef"
     @scroll="handleScroll"
-    @touchstart.passive="handleScroll"
-    @touchmove.passive="handleScroll"
-    @touchend.passive="handleScroll"
+    @touchstart.passive="handleTouchStart"
+    @touchmove.passive="handleTouchMove"
+    @touchend.passive="handleTouchEnd"
   >
+
+    
     <div class="column-content">
       <div
         v-for="(item, index) in items"
         :key="index"
         class="time-item"
         :class="{ active: index === selectedIndex }"
+        :style="getItemStyle(index)"
         @click="handleItemClick(index)"
       >
         {{ item }}
       </div>
     </div>
+
   </div>
 </template>
 
@@ -136,6 +167,10 @@ onMounted(() => {
   flex: 1;
   max-width: 80px;
   padding: 80px 0;
+  perspective: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 
   &::-webkit-scrollbar {
     display: none;
@@ -145,6 +180,8 @@ onMounted(() => {
 .column-content {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  position: relative;
 }
 
 .time-item {
@@ -158,12 +195,34 @@ onMounted(() => {
   cursor: pointer;
   transition: all 0.2s ease;
   user-select: none;
+  transform-origin: center;
+  opacity: 0.5;
+  transform: scale(0.8) rotateX(30deg);
+}
 
-  &.active {
-    color: var(--tg-theme-text-color);
-    font-weight: 600;
-    font-size: 22px;
-    transform: scale(1.1);
-  }
+.time-item.active {
+  color: var(--tg-theme-text-color);
+  font-weight: 600;
+  font-size: 32px;
+  transform: scale(1.1) rotateX(0deg);
+  opacity: 1;
+}
+
+.time-item:nth-child(n+1):nth-child(-n+2),
+.time-item:nth-last-child(n+1):nth-last-child(-n+2) {
+  transform: scale(0.9) rotateX(15deg);
+  opacity: 0.7;
+}
+
+.time-item:nth-child(n+3):nth-child(-n+4),
+.time-item:nth-last-child(n+3):nth-last-child(-n+4) {
+  transform: scale(0.85) rotateX(25deg);
+  opacity: 0.6;
+}
+
+.time-item:nth-child(n+5),
+.time-item:nth-last-child(n+5) {
+  transform: scale(0.8) rotateX(30deg);
+  opacity: 0.5;
 }
 </style>

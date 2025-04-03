@@ -1,67 +1,85 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
-import TimeColumn from './TimeColumn.vue'
+import { ref, computed, onMounted } from "vue";
+import TimeColumn from "./TimeColumn.vue";
 
 const props = defineProps({
   selectedTime: { type: String, default: null },
-  format: { type: String as () => '12h' | '24h', default: '24h' },
-  minTime: { type: String, default: '00:00' },
-  maxTime: { type: String, default: '23:59' }
-})
+  format: { type: String as () => "12h" | "24h", default: "24h" },
+  minTime: { type: String, default: "00:00" },
+  maxTime: { type: String, default: "23:59" },
+});
 
-const emit = defineEmits(['close', 'select'])
+const emit = defineEmits(["close", "select"]);
 
-const hours = ref<number>(0)
-const minutes = ref<number>(0)
-const isAm = ref<boolean>(true)
+const hours = ref<number>(0);
+const minutes = ref<number>(0);
+const isAm = ref<boolean>(true);
+
+function setCurrentTime() {
+  const now = new Date();
+  hours.value = now.getHours();
+  minutes.value = now.getMinutes();
+
+  if (props.format === "12h") {
+    isAm.value = hours.value < 12;
+    hours.value = hours.value % 12 || 12;
+  }
+}
 
 // Инициализация значений
 function initValues() {
   if (props.selectedTime) {
-    const [h, m] = props.selectedTime.split(':').map(Number)
-    hours.value = h
-    minutes.value = m
+    const [h, m] = props.selectedTime.split(":").map(Number);
+    hours.value = h;
+    minutes.value = m;
   } else {
-    const now = new Date()
-    hours.value = now.getHours()
-    minutes.value = now.getMinutes()
-  }
-  
-  if (props.format === '12h') {
-    isAm.value = hours.value < 12
-    hours.value = hours.value % 12 || 12
+    setCurrentTime();
   }
 }
 
-onMounted(initValues)
+onMounted(initValues);
 
 const formattedTime = computed(() => {
-  let h = hours.value
-  let suffix = ''
-  
-  if (props.format === '12h') {
-    suffix = isAm.value ? 'AM' : 'PM'
-    h = h % 12 || 12
+  let h = hours.value;
+  let suffix = "";
+
+  if (props.format === "12h") {
+    suffix = isAm.value ? "AM" : "PM";
+    h = h % 12 || 12;
   } else {
-    h = h % 24
+    h = h % 24;
   }
-  
-  return `${h.toString().padStart(2, '0')}:${minutes.value.toString().padStart(2, '0')}${suffix ? ' ' + suffix : ''}`
-})
+
+  return `${h.toString().padStart(2, "0")}:${minutes.value
+    .toString()
+    .padStart(2, "0")}${suffix ? " " + suffix : ""}`;
+});
 
 function handleSelect() {
-  let h = hours.value
-  if (props.format === '12h') {
-    h = isAm.value ? h % 12 : (h % 12) + 12
+  let h = hours.value;
+  if (props.format === "12h") {
+    h = isAm.value ? h % 12 : (h % 12) + 12;
   }
-  
-  const time = `${h.toString().padStart(2, '0')}:${minutes.value.toString().padStart(2, '0')}`
-  emit('select', time)
+
+  const time = `${h.toString().padStart(2, "0")}:${minutes.value
+    .toString()
+    .padStart(2, "0")}`;
+  emit("select", time);
 }
 
 function handleOutsideClick(e: MouseEvent) {
-  if ((e.target as HTMLElement).classList.contains('modal-overlay')) {
-    emit('close')
+  if ((e.target as HTMLElement).classList.contains("modal-overlay")) {
+    // Устанавливаем текущее время пользователя
+    const now = new Date();
+    hours.value = now.getHours();
+    minutes.value = now.getMinutes();
+
+    if (props.format === "12h") {
+      isAm.value = hours.value < 12;
+      hours.value = hours.value % 12 || 12;
+    }
+    // Автоматически подтверждаем выбор
+    handleSelect();
   }
 }
 </script>
@@ -70,7 +88,7 @@ function handleOutsideClick(e: MouseEvent) {
   <div class="modal-overlay dark-theme" @click="handleOutsideClick">
     <div class="modal-content">
       <div class="time-display">{{ formattedTime }}</div>
-      
+
       <div class="time-columns-container">
         <div class="selection-highlight"></div>
         <div class="time-columns">
@@ -80,21 +98,25 @@ function handleOutsideClick(e: MouseEvent) {
             :max="format === '12h' ? 12 : 23"
             :step="1"
           />
-          <TimeColumn
-            v-model="minutes"
-            :min="0"
-            :max="59"
-            :step="1"
-          />
+          <TimeColumn v-model="minutes" :min="0" :max="59" :step="1" />
           <TimeColumn
             v-if="format === '12h'"
             v-model="isAm"
             :items="['AM', 'PM']"
             is-boolean
           />
+          <TimePickerModal
+            v-if="isModalOpen"
+            :selected-time="modelValue"
+            :format="format"
+            :min-time="minTime"
+            :max-time="maxTime"
+            @close="handleModalClose"
+            @select="handleTimeSelect"
+          />
         </div>
       </div>
-      
+
       <button class="select-button" @click="handleSelect">Выбрать</button>
     </div>
   </div>
@@ -110,7 +132,7 @@ function handleOutsideClick(e: MouseEvent) {
   background-color: rgba(0, 0, 0, 0.7);
   display: flex;
   justify-content: center;
-  align-items: center;
+  align-items: flex-end;
   z-index: 1000;
 }
 
@@ -143,7 +165,7 @@ function handleOutsideClick(e: MouseEvent) {
   cursor: pointer;
   margin-top: 10px;
   transition: opacity 0.2s;
-  
+
   &:active {
     opacity: 0.8;
   }
@@ -153,14 +175,14 @@ function handleOutsideClick(e: MouseEvent) {
   height: 200px;
   margin: 10px 0;
   overflow: hidden;
-  
+
   .time-columns {
     height: 100%;
     display: flex;
     justify-content: center;
     align-items: center;
   }
-  
+
   .selection-highlight {
     position: absolute;
     top: 50%;

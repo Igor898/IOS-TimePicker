@@ -53,7 +53,7 @@ function handleTimeSelect(time: string) {
 
 .title {
   color: var(--tg-theme-text-color);
-  font-size: 16px;
+  font-size: 15px;
 }
 
 .time-button {

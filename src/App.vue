@@ -1,5 +1,5 @@
 <template>
-  <div class="app-container">
+  <div class="app-container dark-theme">
     <h1>iOS Style TimePicker</h1>
     <div class="demo-section">
       <TimePicker 
@@ -7,7 +7,6 @@
         title="Выберите время" 
         class="picker"
       />
-      
       <TimePicker 
         v-model="selectedTime2" 
         format="12h" 
