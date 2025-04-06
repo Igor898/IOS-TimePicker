@@ -15,29 +15,59 @@ const hours = ref<number>(0);
 const minutes = ref<number>(0);
 const isAm = ref<boolean>(true);
 
-function setCurrentTime() {
-  const now = new Date();
-  hours.value = now.getHours();
-  minutes.value = now.getMinutes();
 
+const isTimeValid = computed(() => {
+  if (!props.minTime || !props.maxTime) return true;
+
+  const [minH, minM] = props.minTime.split(":").map(Number);
+  const [maxH, maxM] = props.maxTime.split(":").map(Number);
+
+  let currentH = hours.value;
   if (props.format === "12h") {
-    isAm.value = hours.value < 12;
-    hours.value = hours.value % 12 || 12;
+    currentH = isAm.value ? currentH % 12 : (currentH % 12) + 12;
   }
+
+  const currentM = minutes.value;
+
+  // Проверяем, что текущее время между min и max
+  return (
+    (currentH > minH || (currentH === minH && currentM >= minM)) &&
+    (currentH < maxH || (currentH === maxH && currentM <= maxM))
+  );
+});
+
+// Модифицируем handleSelect для проверки времени
+function handleSelect() {
+  if (!isTimeValid.value) {
+    // Можно показать сообщение об ошибке или просто не закрывать модальное окно
+    return;
+  }
+
+  let h = hours.value;
+  if (props.format === "12h") {
+    h = isAm.value ? h % 12 : (h % 12) + 12;
+  }
+
+  const time = `${h.toString().padStart(2, "0")}:${minutes.value
+    .toString()
+    .padStart(2, "0")}`;
+  emit("select", time);
 }
 
-// Инициализация значений
-function initValues() {
-  if (props.selectedTime) {
-    const [h, m] = props.selectedTime.split(":").map(Number);
-    hours.value = h;
-    minutes.value = m;
+onMounted(resetTime);
+
+// Функция сброса времени
+function resetTime() {
+  if (props.format === "12h") {
+    hours.value = 12; // 12:00 AM
+    minutes.value = 0;
+    isAm.value = true;
   } else {
-    setCurrentTime();
+    hours.value = 0; // 00:00
+    minutes.value = 0;
   }
 }
 
-onMounted(initValues);
 
 const formattedTime = computed(() => {
   let h = hours.value;
@@ -54,18 +84,6 @@ const formattedTime = computed(() => {
     .toString()
     .padStart(2, "0")}${suffix ? " " + suffix : ""}`;
 });
-
-function handleSelect() {
-  let h = hours.value;
-  if (props.format === "12h") {
-    h = isAm.value ? h % 12 : (h % 12) + 12;
-  }
-
-  const time = `${h.toString().padStart(2, "0")}:${minutes.value
-    .toString()
-    .padStart(2, "0")}`;
-  emit("select", time);
-}
 
 function handleOutsideClick(e: MouseEvent) {
   if ((e.target as HTMLElement).classList.contains("modal-overlay")) {
@@ -97,8 +115,17 @@ function handleOutsideClick(e: MouseEvent) {
             :min="format === '12h' ? 1 : 0"
             :max="format === '12h' ? 12 : 23"
             :step="1"
+            :min-time="minTime"
+            :max-time="maxTime"
           />
-          <TimeColumn v-model="minutes" :min="0" :max="59" :step="1" />
+          <TimeColumn
+            v-model="minutes"
+            :min="0"
+            :max="59"
+            :step="1"
+            :min-time="minTime"
+            :max-time="maxTime"
+          />
           <TimeColumn
             v-if="format === '12h'"
             v-model="isAm"
@@ -117,7 +144,14 @@ function handleOutsideClick(e: MouseEvent) {
         </div>
       </div>
 
-      <button class="select-button" @click="handleSelect">Выбрать</button>
+      <button
+        class="select-button"
+        @click="handleSelect"
+        :disabled="!isTimeValid"
+        :style="{ opacity: isTimeValid ? 1 : 0.5 }"
+      >
+        Выбрать
+      </button>
     </div>
   </div>
 </template>

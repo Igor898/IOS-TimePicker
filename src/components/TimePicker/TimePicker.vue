@@ -19,12 +19,20 @@ function handleTimeSelect(time: string) {
   emit('update:modelValue', time)
   isModalOpen.value = false
 }
+// Добавляем функцию для открытия модального окна
+function openModal() {
+  // Если значение не установлено, сбрасываем его в null перед открытием
+  if (!props.modelValue) {
+    emit('update:modelValue', null)
+  }
+  isModalOpen.value = true
+}
 </script>
 
 <template>
   <div class="time-picker-container">
     <span class="title">{{ title }}</span>
-    <button class="time-button" @click="isModalOpen = true">
+    <button class="time-button" @click="openModal">
       {{ displayValue }}
     </button>
     
