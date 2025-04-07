@@ -1,31 +1,33 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import TimePickerModal from './TimePickerModal.vue'
+import { ref, computed } from "vue";
+import TimePickerModal from "./TimePickerModal.vue";
 
 const props = defineProps({
   modelValue: { type: String, default: null },
-  title: { type: String, default: 'Выбрать время' },
-  format: { type: String as () => '12h' | '24h', default: '24h' },
-  minTime: { type: String, default: '00:00' },
-  maxTime: { type: String, default: '23:59' }
-})
+  title: { type: String, default: "Выбрать время" },
+  format: { type: String as () => "12h" | "24h", default: "24h" },
+  minTime: { type: String, default: "00:00" },
+  maxTime: { type: String, default: "23:59" },
+  disableOutsideClick: { type: Boolean, default: false },
+});
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits<{
+  (e: "update:modelValue", value: string): void;
+}>();
 
-const isModalOpen = ref(false)
-const displayValue = computed(() => props.modelValue || '--:--')
+const isModalOpen = ref(false);
+const displayValue = computed(() => props.modelValue || "--:--");
 
 function handleTimeSelect(time: string) {
-  emit('update:modelValue', time)
-  isModalOpen.value = false
+  emit("update:modelValue", time);
+  isModalOpen.value = false;
 }
-// Добавляем функцию для открытия модального окна
+
 function openModal() {
-  // Если значение не установлено, сбрасываем его в null перед открытием
   if (!props.modelValue) {
-    emit('update:modelValue', null)
+    emit("update:modelValue", null);
   }
-  isModalOpen.value = true
+  isModalOpen.value = true;
 }
 </script>
 
@@ -35,13 +37,13 @@ function openModal() {
     <button class="time-button" @click="openModal">
       {{ displayValue }}
     </button>
-    
     <TimePickerModal
       v-if="isModalOpen"
       :selected-time="modelValue"
       :format="format"
       :min-time="minTime"
       :max-time="maxTime"
+      :disable-outside-click="disableOutsideClick"
       @close="isModalOpen = false"
       @select="handleTimeSelect"
     />
@@ -49,7 +51,7 @@ function openModal() {
 </template>
 
 <style scoped lang="scss">
-@import '@/assets/styles/variables.scss';
+@import "@/assets/styles/variables.scss";
 .time-picker-container {
   display: flex;
   justify-content: space-between;
@@ -72,7 +74,7 @@ function openModal() {
   padding: 8px 12px;
   border-radius: 8px;
   cursor: pointer;
-  
+
   &:active {
     background-color: rgba(89, 183, 255, 0.1);
   }

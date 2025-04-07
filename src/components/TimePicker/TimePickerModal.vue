@@ -7,15 +7,23 @@ const props = defineProps({
   format: { type: String as () => "12h" | "24h", default: "24h" },
   minTime: { type: String, default: "00:00" },
   maxTime: { type: String, default: "23:59" },
+  disableOutsideClick: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(["close", "select"]);
+const emit = defineEmits<{
+  (e: "close"): void;
+  (e: "select", time: string): void;
+}>();
 
 const hours = ref<number>(0);
 const minutes = ref<number>(0);
 const isAm = ref<boolean>(true);
 
-
+// Вычисляем максимальное значение минут в зависимости от текущих часов
+const maxMinutes = computed(() => {
+  const [maxH, maxM] = props.maxTime.split(":").map(Number);
+  return hours.value === maxH ? maxM : 59; // Ограничиваем минуты, если часы достигли максимума
+});
 const isTimeValid = computed(() => {
   if (!props.minTime || !props.maxTime) return true;
 
@@ -29,19 +37,14 @@ const isTimeValid = computed(() => {
 
   const currentM = minutes.value;
 
-  // Проверяем, что текущее время между min и max
   return (
     (currentH > minH || (currentH === minH && currentM >= minM)) &&
     (currentH < maxH || (currentH === maxH && currentM <= maxM))
   );
 });
 
-// Модифицируем handleSelect для проверки времени
 function handleSelect() {
-  if (!isTimeValid.value) {
-    // Можно показать сообщение об ошибке или просто не закрывать модальное окно
-    return;
-  }
+  if (!isTimeValid.value) return;
 
   let h = hours.value;
   if (props.format === "12h") {
@@ -58,16 +61,17 @@ onMounted(resetTime);
 
 // Функция сброса времени
 function resetTime() {
+  const [minH, minM] = props.minTime.split(":").map(Number);
+
   if (props.format === "12h") {
     hours.value = 12; // 12:00 AM
     minutes.value = 0;
     isAm.value = true;
   } else {
-    hours.value = 0; // 00:00
-    minutes.value = 0;
+    hours.value = Math.max(minH, 0);
+    minutes.value = minH === hours.value ? minM : 0;
   }
 }
-
 
 const formattedTime = computed(() => {
   let h = hours.value;
@@ -86,8 +90,9 @@ const formattedTime = computed(() => {
 });
 
 function handleOutsideClick(e: MouseEvent) {
+  if (props.disableOutsideClick) return; // Игнорируем клики, если disableOutsideClick=true
+
   if ((e.target as HTMLElement).classList.contains("modal-overlay")) {
-    // Устанавливаем текущее время пользователя
     const now = new Date();
     hours.value = now.getHours();
     minutes.value = now.getMinutes();
@@ -96,7 +101,7 @@ function handleOutsideClick(e: MouseEvent) {
       isAm.value = hours.value < 12;
       hours.value = hours.value % 12 || 12;
     }
-    // Автоматически подтверждаем выбор
+
     handleSelect();
   }
 }
@@ -106,7 +111,6 @@ function handleOutsideClick(e: MouseEvent) {
   <div class="modal-overlay dark-theme" @click="handleOutsideClick">
     <div class="modal-content">
       <div class="time-display">{{ formattedTime }}</div>
-
       <div class="time-columns-container">
         <div class="selection-highlight"></div>
         <div class="time-columns">
@@ -123,8 +127,7 @@ function handleOutsideClick(e: MouseEvent) {
             :min="0"
             :max="59"
             :step="1"
-            :min-time="minTime"
-            :max-time="maxTime"
+            :max-minutes="maxMinutes"
           />
           <TimeColumn
             v-if="format === '12h'"
@@ -132,18 +135,8 @@ function handleOutsideClick(e: MouseEvent) {
             :items="['AM', 'PM']"
             is-boolean
           />
-          <TimePickerModal
-            v-if="isModalOpen"
-            :selected-time="modelValue"
-            :format="format"
-            :min-time="minTime"
-            :max-time="maxTime"
-            @close="handleModalClose"
-            @select="handleTimeSelect"
-          />
         </div>
       </div>
-
       <button
         class="select-button"
         @click="handleSelect"
@@ -178,7 +171,36 @@ function handleOutsideClick(e: MouseEvent) {
   padding: 20px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
+.time-columns {
+  display: flex;
+  justify-content: center;
+  align-items: center;
 
+  /* Разделитель между часами и минутами */
+  position: relative;
+  &::after {
+    content: ":";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 24px;
+    color: var(--tg-theme-text-color);
+  }
+}
+
+/* Для минут делаем стандартное отображение */
+.time-column:last-child {
+  .time-item {
+    opacity: 0.5;
+    transform: scale(0.8);
+
+    &.active {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+}
 .time-display {
   text-align: center;
   font-size: 24px;

@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import { gsap } from "gsap";
+import { ScrollToPlugin } from "gsap/ScrollToPlugin";
+
+gsap.registerPlugin(ScrollToPlugin);
 
 const props = defineProps({
   modelValue: [Number, Boolean],
@@ -11,13 +14,50 @@ const props = defineProps({
   isBoolean: { type: Boolean, default: false },
   minTime: { type: String, default: "00:00" },
   maxTime: { type: String, default: "23:59" },
+  format: { type: String, default: "24h" },
+  maxMinutes: { type: Number, default: 59 },
 });
+
+const emit = defineEmits<{
+  (e: "update:modelValue", value: string): void;
+}>();
+
+const selectedIndex = ref(0);
+const isScrolling = ref(false);
+const columnRef = ref<HTMLElement | null>(null);
+
+const items = computed(() => {
+  if (props.isBoolean) return props.items || ["AM", "PM"];
+
+  const result = [];
+  if (props.min === 0 && props.max === 59) {
+    for (let i = props.min; i <= props.maxMinutes; i += props.step) {
+      result.push(i.toString().padStart(2, "0"));
+    }
+    return result;
+  }
+
+  const [minH] = props.minTime.split(":").map(Number);
+  const [maxH] = props.maxTime.split(":").map(Number);
+
+  for (let i = props.min; i <= props.max; i += props.step) {
+    if (props.format === "24h") {
+      if (i < minH || i > maxH) continue;
+    } else {
+      const hour24 = props.modelValue === false ? (i % 12) + 12 : i % 12;
+      if (hour24 < minH || hour24 > maxH) continue;
+    }
+    result.push(i.toString().padStart(2, "0"));
+  }
+
+  return result;
+});
+
 function getItemStyle(index: number) {
   const centerIndex = selectedIndex.value;
   const distance = Math.abs(index - centerIndex);
   const maxDistance = 5;
 
-  // Эффект "всасывания" в черные дыры
   if (distance > maxDistance) {
     return {
       opacity: 0,
@@ -26,7 +66,6 @@ function getItemStyle(index: number) {
     };
   }
 
-  // Плавное изменение для ближайших элементов
   const ratio = distance / maxDistance;
   const scale = 1 - ratio * 0.5;
   const opacity = 1 - ratio * 0.8;
@@ -41,31 +80,14 @@ function getItemStyle(index: number) {
   };
 }
 
-const emit = defineEmits(["update:modelValue"]);
-
-const columnRef = ref<HTMLElement | null>(null);
-const items = computed(() => {
-  if (props.isBoolean) return props.items || ["AM", "PM"];
-
-  const result = [];
-  for (let i = props.min; i <= props.max; i += props.step) {
-    result.push(i.toString().padStart(2, "0"));
-  }
-  return result;
-});
-
-const selectedIndex = ref(0);
-const isScrolling = ref(false);
-
-// Вычисляем центральную позицию (где находится selection-highlight)
 function getCurrentCenterIndex() {
   if (!columnRef.value) return -1;
 
   const container = columnRef.value;
   const containerRect = container.getBoundingClientRect();
   const containerCenter = containerRect.top + containerRect.height / 2;
-
   const items = container.querySelectorAll(".time-item");
+
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
     const itemRect = item.getBoundingClientRect();
@@ -75,6 +97,7 @@ function getCurrentCenterIndex() {
       return i;
     }
   }
+
   return -1;
 }
 
@@ -89,8 +112,11 @@ function handleScroll() {
 }
 
 function updateValue(index: number) {
-  const newValue = props.isBoolean ? index === 1 : parseInt(items.value[index]);
+  if (index < 0 || index >= items.value.length) return;
 
+  const newValue = props.isBoolean
+    ? (index === 1)
+    : parseInt(items.value[index], 10);
   emit("update:modelValue", newValue);
 }
 
@@ -99,14 +125,17 @@ function snapToIndex(index: number) {
 
   isScrolling.value = true;
   const itemHeight = 40;
+  const targetPosition = index * itemHeight;
+
   gsap.to(columnRef.value, {
-    scrollTo: { y: index * itemHeight },
-    duration: 0.4,
-    ease: "back.out(1.5)",
+    scrollTo: { y: targetPosition },
+    duration: 0.1,
+    ease: "power2.out",
     onComplete: () => {
       isScrolling.value = false;
       selectedIndex.value = index;
       updateValue(index);
+      columnRef.value.scrollTop = targetPosition;
     },
   });
 }
@@ -117,14 +146,7 @@ function handleItemClick(index: number) {
 </script>
 
 <template>
-  <div
-    class="time-column"
-    ref="columnRef"
-    @scroll="handleScroll"
-    @touchstart.passive="handleTouchStart"
-    @touchmove.passive="handleTouchMove"
-    @touchend.passive="handleTouchEnd"
-  >
+  <div class="time-column" ref="columnRef" @scroll="handleScroll">
     <div class="column-content">
       <div
         v-for="(item, index) in items"
@@ -143,29 +165,20 @@ function handleItemClick(index: number) {
 <style scoped lang="scss">
 .time-column {
   height: 200px;
-  overflow-y: scroll;
+  overflow-y: auto;
   scroll-snap-type: y mandatory;
   position: relative;
   flex: 1;
   max-width: 80px;
   padding: 80px 0;
-  perspective: 300px;
   display: flex;
   flex-direction: column;
   align-items: center;
 
   &::-webkit-scrollbar {
-    display: none;
+    width: 6px;
   }
 }
-
-.column-content {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  position: relative;
-}
-
 .time-item {
   height: 40px;
   display: flex;
@@ -177,34 +190,11 @@ function handleItemClick(index: number) {
   cursor: pointer;
   transition: all 0.2s ease;
   user-select: none;
-  transform-origin: center;
-  opacity: 0.5;
-  transform: scale(0.8) rotateX(30deg);
-}
 
-.time-item.active {
-  color: var(--tg-theme-text-color);
-  font-weight: 600;
-  font-size: 32px;
-  transform: scale(1.1) rotateX(0deg);
-  opacity: 1;
-}
-
-.time-item:nth-child(n + 1):nth-child(-n + 2),
-.time-item:nth-last-child(n + 1):nth-last-child(-n + 2) {
-  transform: scale(0.9) rotateX(15deg);
-  opacity: 0.7;
-}
-
-.time-item:nth-child(n + 3):nth-child(-n + 4),
-.time-item:nth-last-child(n + 3):nth-last-child(-n + 4) {
-  transform: scale(0.85) rotateX(25deg);
-  opacity: 0.6;
-}
-
-.time-item:nth-child(n + 5),
-.time-item:nth-last-child(n + 5) {
-  transform: scale(0.8) rotateX(30deg);
-  opacity: 0.5;
+  &.active {
+    color: var(--tg-theme-text-color);
+    font-weight: 600;
+    font-size: 32px;
+  }
 }
 </style>
