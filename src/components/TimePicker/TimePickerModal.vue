@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from "vue";
+import { ref, computed, onMounted, nextTick, watch } from "vue";
 import TimeColumn from "./TimeColumn.vue";
 import { gsap } from "gsap";
 import { ScrollToPlugin } from "gsap/ScrollToPlugin";
@@ -21,9 +21,10 @@ const emit = defineEmits<{
 
 const hours = ref<number>(0);
 const minutes = ref<number>(0);
-const isAm = ref<boolean>(true);
+const period = ref<"AM" | "PM">("AM");
 const hourColumnRef = ref<HTMLElement | null>(null);
 const minuteColumnRef = ref<HTMLElement | null>(null);
+const periodColumnRef = ref<HTMLElement | null>(null);
 
 const maxMinutes = computed(() => {
   const [maxH, maxM] = props.maxTime.split(":").map(Number);
@@ -37,11 +38,12 @@ const isTimeValid = computed(() => {
 
   let currentH = hours.value;
   if (props.format === "12h") {
-    currentH = isAm.value ? currentH % 12 : (currentH % 12) + 12;
+    currentH = period.value === "AM" 
+      ? (currentH === 12 ? 0 : currentH)
+      : (currentH === 12 ? 12 : currentH + 12);
   }
 
   const currentM = minutes.value;
-
   return (
     (currentH > minH || (currentH === minH && currentM >= minM)) &&
     (currentH < maxH || (currentH === maxH && currentM <= maxM))
@@ -49,15 +51,15 @@ const isTimeValid = computed(() => {
 });
 
 function handleSelect() {
-  if (!isTimeValid.value) return;
-
   let h = hours.value;
   if (props.format === "12h") {
-    h = isAm.value ? h % 12 : (h % 12) + 12;
+    if (period.value === "AM") {
+      h = h === 12 ? 0 : h;
+    } else {
+      h = h === 12 ? 12 : h + 12;
+    }
   }
-  const time = `${h.toString().padStart(2, "0")}:${minutes.value
-    .toString()
-    .padStart(2, "0")}`;
+  const time = `${h.toString().padStart(2, "0")}:${minutes.value.toString().padStart(2, "0")}`;
   emit("select", time);
 }
 
@@ -66,26 +68,66 @@ onMounted(() => {
   scrollToCurrentValues();
 });
 
-// Функция сброса времени
 function resetTime() {
   if (props.selectedTime) {
     const [h, m] = props.selectedTime.split(":").map(Number);
     hours.value = h;
     minutes.value = m;
-
     if (props.format === "12h") {
-      isAm.value = h < 12;
+      period.value = h < 12 ? "AM" : "PM";
       hours.value = h % 12 || 12;
     }
   } else {
     const [minH, minM] = props.minTime.split(":").map(Number);
     hours.value = minH;
     minutes.value = minM;
-
     if (props.format === "12h") {
-      isAm.value = minH < 12;
+      period.value = minH < 12 ? "AM" : "PM";
       hours.value = minH % 12 || 12;
     }
+  }
+}
+
+function handleOutsideClick(e: MouseEvent) {
+  if (props.disableOutsideClick) return;
+
+  if ((e.target as HTMLElement).classList.contains("modal-overlay")) {
+    const now = new Date();
+    let h = now.getHours();
+    let m = now.getMinutes();
+    
+    if (props.format === "12h") {
+      period.value = h < 12 ? "AM" : "PM";
+      h = h % 12 === 0 ? 12 : h % 12;
+    }
+
+    if (props.minTime || props.maxTime) {
+      const [minH, minM] = props.minTime.split(":").map(Number);
+      const [maxH, maxM] = props.maxTime.split(":").map(Number);
+      
+      let currentH = h;
+      if (props.format === "12h") {
+        currentH = period.value === "AM" 
+          ? (h === 12 ? 0 : h)
+          : (h === 12 ? 12 : h + 12);
+      }
+      
+      currentH = Math.max(minH, Math.min(maxH, currentH));
+      if (currentH === minH) m = Math.max(minM, m);
+      if (currentH === maxH) m = Math.min(maxM, m);
+      
+      if (props.format === "12h") {
+        period.value = currentH < 12 ? "AM" : "PM";
+        h = currentH % 12 === 0 ? 12 : currentH % 12;
+      } else {
+        h = currentH;
+      }
+    }
+    
+    hours.value = h;
+    minutes.value = m;
+    handleSelect();
+    emit("close");
   }
 }
 
@@ -93,46 +135,49 @@ function scrollToCurrentValues() {
   nextTick(() => {
     if (props.selectedTime) {
       const [h, m] = props.selectedTime.split(":").map(Number);
-      // Прокручиваем колонку часов
-      snapToIndex(h % (props.format === "12h" ? 12 : 24), "hours");
-      // Прокручиваем колонку минут
+      const hourValue = props.format === "12h" ? h % 12 || 12 : h;
+      snapToIndex(hourValue, "hours");
       snapToIndex(m, "minutes");
+      if (props.format === "12h") {
+        const ampmIndex = h < 12 ? 0 : 1;
+        snapToIndex(ampmIndex, "ampm");
+      }
     }
   });
 }
 
-function snapToIndex(value: number, type: "hours" | "minutes") {
-  const items = itemsForType(type);
-  const index = items.indexOf(value.toString().padStart(2, "0"));
+function snapToIndex(value: number, type: "hours" | "minutes" | "ampm") {
+  let column: HTMLElement | null = null;
+  let items: string[] = [];
 
-  if (index >= 0) {
-    const column =
-      type === "hours" ? hourColumnRef.value : minuteColumnRef.value;
-    if (column) {
+  if (type === "hours") {
+    column = hourColumnRef.value;
+    items = Array.from({ length: props.format === "12h" ? 12 : 24 }, (_, i) =>
+      (i + (props.format === "12h" ? 1 : 0)).toString().padStart(2, "0")
+    );
+  } else if (type === "minutes") {
+    column = minuteColumnRef.value;
+    items = Array.from({ length: maxMinutes.value + 1 }, (_, i) =>
+      i.toString().padStart(2, "0")
+    );
+  } else if (type === "ampm") {
+    column = periodColumnRef.value;
+    items = ["AM", "PM"];
+  }
+
+  if (column && items.length > 0) {
+    const index =
+      type === "ampm"
+        ? value
+        : items.indexOf(value.toString().padStart(2, "0"));
+    if (index >= 0) {
       const itemHeight = 40;
       gsap.to(column, {
         scrollTo: { y: index * itemHeight },
         duration: 0.4,
         ease: "back.out(1.5)",
       });
-    } else {
-      console.warn(`Column reference for ${type} is not defined.`);
     }
-  } else {
-    console.warn(`Value ${value} not found in items for type ${type}:`, items);
-  }
-}
-
-function itemsForType(type: "hours" | "minutes"): string[] {
-  if (type === "hours") {
-    return Array.from({ length: props.format === "12h" ? 12 : 24 }, (_, i) =>
-      (i + (props.format === "12h" ? 1 : 0)).toString().padStart(2, "0")
-    );
-  } else {
-    const maxM = maxMinutes.value;
-    return Array.from({ length: maxM + 1 }, (_, i) =>
-      i.toString().padStart(2, "0")
-    );
   }
 }
 
@@ -141,33 +186,14 @@ const formattedTime = computed(() => {
   let suffix = "";
 
   if (props.format === "12h") {
-    suffix = "AM";
+    suffix = ` ${period.value}`;
     h = h % 12 || 12;
-  } else {
-    h = h % 24;
   }
 
   return `${h.toString().padStart(2, "0")}:${minutes.value
     .toString()
-    .padStart(2, "0")}${suffix ? " " + suffix : ""}`;
+    .padStart(2, "0")}${suffix}`;
 });
-
-function handleOutsideClick(e: MouseEvent) {
-  if (props.disableOutsideClick) return;
-
-  if ((e.target as HTMLElement).classList.contains("modal-overlay")) {
-    const now = new Date();
-    hours.value = now.getHours();
-    minutes.value = now.getMinutes();
-
-    if (props.format === "12h") {
-      isAm.value = hours.value < 12;
-      hours.value = hours.value % 12 || 12;
-    }
-
-    handleSelect();
-  }
-}
 </script>
 
 <template>
@@ -193,7 +219,14 @@ function handleOutsideClick(e: MouseEvent) {
             :min="0"
             :max="59"
             :step="1"
-            :maxMinutes="maxMinutes"
+            :max-minutes="maxMinutes"
+          />
+          <TimeColumn
+            v-if="format === '12h'"
+            ref="periodColumnRef"
+            v-model="period"
+            :items="['AM', 'PM']"
+            type="ampm"
           />
         </div>
       </div>
@@ -231,34 +264,14 @@ function handleOutsideClick(e: MouseEvent) {
   padding: 20px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
+
 .time-columns {
   display: flex;
   justify-content: center;
   align-items: center;
-
   position: relative;
-  &::after {
-    content: ":";
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 24px;
-    color: var(--tg-theme-text-color);
-  }
 }
 
-.time-column:last-child {
-  .time-item {
-    opacity: 0.5;
-    transform: scale(0.8);
-
-    &.active {
-      opacity: 1;
-      transform: scale(1);
-    }
-  }
-}
 .time-display {
   text-align: center;
   font-size: 24px;
@@ -284,6 +297,7 @@ function handleOutsideClick(e: MouseEvent) {
     opacity: 0.8;
   }
 }
+
 .time-columns-container {
   position: relative;
   height: 200px;
@@ -309,6 +323,18 @@ function handleOutsideClick(e: MouseEvent) {
     border-bottom: 1px solid var(--tg-theme-button-color);
     pointer-events: none;
     z-index: 1;
+  }
+}
+
+.time-column.ampm {
+  max-width: 70px;
+
+  .time-item {
+    font-size: 18px;
+    &.active {
+      font-size: 22px;
+      color: var(--tg-theme-button-color);
+    }
   }
 }
 </style>

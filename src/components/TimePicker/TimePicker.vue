@@ -20,9 +20,19 @@ const displayValue = computed(() => {
   if (!props.modelValue) return "--:--";
   
   if (props.format === '12h') {
-    const [hours, minutes] = props.modelValue.split(':');
-    const h12 = (parseInt(hours) % 12) || 12;
-    return `${h12}:${minutes}`;
+    const [hours, minutes] = props.modelValue.split(':').map(Number);
+    let h12 = hours % 12 || 12; // Преобразуем в 12-часовой формат
+    const suffix = hours < 12 ? 'AM' : 'PM'; // Определяем AM/PM
+    
+    // Формируем строку времени
+    let timeString = `${h12}:${minutes.toString().padStart(2, "0")} ${suffix}`;
+    
+    // Если время 12:xx AM, заменяем 12 на 00
+    if (/^12:\d{2}\sAM$/.test(timeString)) {
+      timeString = timeString.replace(/^12/, "00");
+    }
+    
+    return timeString;
   }
   
   return props.modelValue;

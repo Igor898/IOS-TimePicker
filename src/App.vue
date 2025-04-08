@@ -13,7 +13,7 @@
       <TimePicker
         v-model="selectedTime2"
         format="12h"
-        title="12-часовой формат (AM)"
+        title="12-часовой формат"
         class="picker"
       />
 

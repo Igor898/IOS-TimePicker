@@ -1,25 +1,25 @@
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted } from "vue";
+import { ref, computed, onMounted, nextTick } from "vue";
 import { gsap } from "gsap";
 import { ScrollToPlugin } from "gsap/ScrollToPlugin";
 
 gsap.registerPlugin(ScrollToPlugin);
 
 const props = defineProps({
-  modelValue: [Number, Boolean],
+  modelValue: { type: [Number, String], default: 0 },
   min: { type: Number, default: 0 },
   max: { type: Number, default: 59 },
   step: { type: Number, default: 1 },
   items: { type: Array, default: null },
-  isBoolean: { type: Boolean, default: false },
-  minTime: { type: String, default: "00:00" },
-  maxTime: { type: String, default: "23:59" },
-  format: { type: String, default: "24h" },
-  maxMinutes: { type: Number, default: 59 },// Нужен для ограничения в минутах при значении 18 в часах
+  type: { type: String, default: "" },
+  maxMinutes: { type: Number, default: 59 },
+  minTime: { type: String, default: null },
+  maxTime: { type: String, default: null },
+  format: { type: String, default: "24h" }
 });
 
 const emit = defineEmits<{
-  (e: "update:modelValue", value: string): void;
+  (e: "update:modelValue", value: any): void;
 }>();
 
 const selectedIndex = ref(0);
@@ -27,53 +27,58 @@ const isScrolling = ref(false);
 const columnRef = ref<HTMLElement | null>(null);
 
 const items = computed(() => {
-  const result: string[] = [];
+  if (props.items) return props.items;
+  
+  if (props.type === "ampm") return ["AM", "PM"];
+  
+  // Для минут
   if (props.min === 0 && props.max === 59) {
-    for (let i = props.min; i <= props.maxMinutes; i += props.step) {
-      result.push(i.toString().padStart(2, "0"));
-    }
-    return result;
+    return Array.from({ length: props.maxMinutes + 1 }, (_, i) =>
+      i.toString().padStart(2, "0")
+    );
   }
-
+  
+  // Для часов
   let min = props.min;
   let max = props.max;
-
+  
+  // Ограничения для третьего TimePicker
   if (props.minTime && props.maxTime && props.format !== '12h') {
     const [minH] = props.minTime.split(":").map(Number);
     const [maxH] = props.maxTime.split(":").map(Number);
     min = Math.max(min, minH);
     max = Math.min(max, maxH);
   }
-
-  for (let i = min; i <= max; i += props.step) {
-    result.push(i.toString().padStart(2, "0"));
-  }
-
-  return result;
+  
+  return Array.from({ length: (max - min) + 1 }, (_, i) =>
+    (min + i).toString().padStart(2, "0")
+  );
 });
+
 onMounted(() => {
   scrollToActiveValue();
 });
 
 function scrollToActiveValue() {
   nextTick(() => {
-    const index = items.value.indexOf(
-      props.modelValue.toString().padStart(2, "0")
-    );
+    let index = 0;
+    if (props.type === "ampm") {
+      index = props.modelValue === "AM" ? 0 : 1;
+    } else {
+      const valueStr = props.modelValue.toString().padStart(2, "0");
+      index = items.value.indexOf(valueStr);
+    }
+
     if (index >= 0) {
-      const itemHeight = 40;
-      gsap.to(columnRef.value, {
-        scrollTo: { y: index * itemHeight },
-        duration: 0.4,
-        ease: "back.out(1.5)",
-      });
+      snapToIndex(index);
     }
   });
 }
+
 function getItemStyle(index: number) {
   const centerIndex = selectedIndex.value;
   const distance = Math.abs(index - centerIndex);
-  const maxDistance = 5;
+  const maxDistance = 3;
 
   if (distance > maxDistance) {
     return {
@@ -131,9 +136,11 @@ function handleScroll() {
 function updateValue(index: number) {
   if (index < 0 || index >= items.value.length) return;
 
-  const newValue = props.isBoolean
-    ? index === 1
-    : parseInt(items.value[index], 10);
+  const newValue =
+    props.type === "ampm"
+      ? items.value[index]
+      : parseInt(items.value[index], 10);
+
   emit("update:modelValue", newValue);
 }
 
@@ -146,13 +153,12 @@ function snapToIndex(index: number) {
 
   gsap.to(columnRef.value, {
     scrollTo: { y: targetPosition },
-    duration: 0.1,
+    duration: 0.3,
     ease: "power2.out",
     onComplete: () => {
       isScrolling.value = false;
       selectedIndex.value = index;
       updateValue(index);
-      columnRef.value.scrollTop = targetPosition;
     },
   });
 }
@@ -163,7 +169,7 @@ function handleItemClick(index: number) {
 </script>
 
 <template>
-  <div class="time-column" ref="columnRef" @scroll="handleScroll">
+  <div class="time-column" :class="type" ref="columnRef" @scroll="handleScroll">
     <div class="column-content">
       <div
         v-for="(item, index) in items"
@@ -196,6 +202,7 @@ function handleItemClick(index: number) {
     width: 6px;
   }
 }
+
 .time-item {
   height: 40px;
   display: flex;
@@ -211,7 +218,19 @@ function handleItemClick(index: number) {
   &.active {
     color: var(--tg-theme-text-color);
     font-weight: 600;
-    font-size: 32px;
+    font-size: 28px;
+  }
+}
+
+.time-column.ampm {
+  max-width: 70px;
+  
+  .time-item {
+    font-size: 18px;
+    &.active {
+      font-size: 28px;
+      color: var(--tg-theme-text-color);
+    }
   }
 }
 </style>
