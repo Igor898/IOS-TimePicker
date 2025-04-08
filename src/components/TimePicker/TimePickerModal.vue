@@ -1,6 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, nextTick } from "vue";
 import TimeColumn from "./TimeColumn.vue";
+import { gsap } from "gsap";
+import { ScrollToPlugin } from "gsap/ScrollToPlugin";
+
+gsap.registerPlugin(ScrollToPlugin);
 
 const props = defineProps({
   selectedTime: { type: String, default: null },
@@ -18,15 +22,16 @@ const emit = defineEmits<{
 const hours = ref<number>(0);
 const minutes = ref<number>(0);
 const isAm = ref<boolean>(true);
+const hourColumnRef = ref<HTMLElement | null>(null);
+const minuteColumnRef = ref<HTMLElement | null>(null);
 
-// Вычисляем максимальное значение минут в зависимости от текущих часов
 const maxMinutes = computed(() => {
   const [maxH, maxM] = props.maxTime.split(":").map(Number);
-  return hours.value === maxH ? maxM : 59; // Ограничиваем минуты, если часы достигли максимума
+  return hours.value === maxH ? maxM : 59;
 });
+
 const isTimeValid = computed(() => {
   if (!props.minTime || !props.maxTime) return true;
-
   const [minH, minM] = props.minTime.split(":").map(Number);
   const [maxH, maxM] = props.maxTime.split(":").map(Number);
 
@@ -50,26 +55,84 @@ function handleSelect() {
   if (props.format === "12h") {
     h = isAm.value ? h % 12 : (h % 12) + 12;
   }
-
   const time = `${h.toString().padStart(2, "0")}:${minutes.value
     .toString()
     .padStart(2, "0")}`;
   emit("select", time);
 }
 
-onMounted(resetTime);
+onMounted(() => {
+  resetTime();
+  scrollToCurrentValues();
+});
 
 // Функция сброса времени
 function resetTime() {
-  const [minH, minM] = props.minTime.split(":").map(Number);
+  if (props.selectedTime) {
+    const [h, m] = props.selectedTime.split(":").map(Number);
+    hours.value = h;
+    minutes.value = m;
 
-  if (props.format === "12h") {
-    hours.value = 12; // 12:00 AM
-    minutes.value = 0;
-    isAm.value = true;
+    if (props.format === "12h") {
+      isAm.value = h < 12;
+      hours.value = h % 12 || 12;
+    }
   } else {
-    hours.value = Math.max(minH, 0);
-    minutes.value = minH === hours.value ? minM : 0;
+    const [minH, minM] = props.minTime.split(":").map(Number);
+    hours.value = minH;
+    minutes.value = minM;
+
+    if (props.format === "12h") {
+      isAm.value = minH < 12;
+      hours.value = minH % 12 || 12;
+    }
+  }
+}
+
+function scrollToCurrentValues() {
+  nextTick(() => {
+    if (props.selectedTime) {
+      const [h, m] = props.selectedTime.split(":").map(Number);
+      // Прокручиваем колонку часов
+      snapToIndex(h % (props.format === "12h" ? 12 : 24), "hours");
+      // Прокручиваем колонку минут
+      snapToIndex(m, "minutes");
+    }
+  });
+}
+
+function snapToIndex(value: number, type: "hours" | "minutes") {
+  const items = itemsForType(type);
+  const index = items.indexOf(value.toString().padStart(2, "0"));
+
+  if (index >= 0) {
+    const column =
+      type === "hours" ? hourColumnRef.value : minuteColumnRef.value;
+    if (column) {
+      const itemHeight = 40;
+      gsap.to(column, {
+        scrollTo: { y: index * itemHeight },
+        duration: 0.4,
+        ease: "back.out(1.5)",
+      });
+    } else {
+      console.warn(`Column reference for ${type} is not defined.`);
+    }
+  } else {
+    console.warn(`Value ${value} not found in items for type ${type}:`, items);
+  }
+}
+
+function itemsForType(type: "hours" | "minutes"): string[] {
+  if (type === "hours") {
+    return Array.from({ length: props.format === "12h" ? 12 : 24 }, (_, i) =>
+      (i + (props.format === "12h" ? 1 : 0)).toString().padStart(2, "0")
+    );
+  } else {
+    const maxM = maxMinutes.value;
+    return Array.from({ length: maxM + 1 }, (_, i) =>
+      i.toString().padStart(2, "0")
+    );
   }
 }
 
@@ -78,7 +141,7 @@ const formattedTime = computed(() => {
   let suffix = "";
 
   if (props.format === "12h") {
-    suffix = isAm.value ? "AM" : "PM";
+    suffix = "AM";
     h = h % 12 || 12;
   } else {
     h = h % 24;
@@ -90,7 +153,7 @@ const formattedTime = computed(() => {
 });
 
 function handleOutsideClick(e: MouseEvent) {
-  if (props.disableOutsideClick) return; // Игнорируем клики, если disableOutsideClick=true
+  if (props.disableOutsideClick) return;
 
   if ((e.target as HTMLElement).classList.contains("modal-overlay")) {
     const now = new Date();
@@ -115,25 +178,22 @@ function handleOutsideClick(e: MouseEvent) {
         <div class="selection-highlight"></div>
         <div class="time-columns">
           <TimeColumn
+            ref="hourColumnRef"
             v-model="hours"
             :min="format === '12h' ? 1 : 0"
             :max="format === '12h' ? 12 : 23"
             :step="1"
             :min-time="minTime"
             :max-time="maxTime"
+            :format="format"
           />
           <TimeColumn
+            ref="minuteColumnRef"
             v-model="minutes"
             :min="0"
             :max="59"
             :step="1"
-            :max-minutes="maxMinutes"
-          />
-          <TimeColumn
-            v-if="format === '12h'"
-            v-model="isAm"
-            :items="['AM', 'PM']"
-            is-boolean
+            :maxMinutes="maxMinutes"
           />
         </div>
       </div>
@@ -176,7 +236,6 @@ function handleOutsideClick(e: MouseEvent) {
   justify-content: center;
   align-items: center;
 
-  /* Разделитель между часами и минутами */
   position: relative;
   &::after {
     content: ":";
@@ -189,7 +248,6 @@ function handleOutsideClick(e: MouseEvent) {
   }
 }
 
-/* Для минут делаем стандартное отображение */
 .time-column:last-child {
   .time-item {
     opacity: 0.5;

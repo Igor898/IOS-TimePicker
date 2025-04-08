@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, nextTick, onMounted } from "vue";
 import { gsap } from "gsap";
 import { ScrollToPlugin } from "gsap/ScrollToPlugin";
 
@@ -15,7 +15,7 @@ const props = defineProps({
   minTime: { type: String, default: "00:00" },
   maxTime: { type: String, default: "23:59" },
   format: { type: String, default: "24h" },
-  maxMinutes: { type: Number, default: 59 },
+  maxMinutes: { type: Number, default: 59 },// Нужен для ограничения в минутах при значении 18 в часах
 });
 
 const emit = defineEmits<{
@@ -27,9 +27,7 @@ const isScrolling = ref(false);
 const columnRef = ref<HTMLElement | null>(null);
 
 const items = computed(() => {
-  if (props.isBoolean) return props.items || ["AM", "PM"];
-
-  const result = [];
+  const result: string[] = [];
   if (props.min === 0 && props.max === 59) {
     for (let i = props.min; i <= props.maxMinutes; i += props.step) {
       result.push(i.toString().padStart(2, "0"));
@@ -37,22 +35,41 @@ const items = computed(() => {
     return result;
   }
 
-  const [minH] = props.minTime.split(":").map(Number);
-  const [maxH] = props.maxTime.split(":").map(Number);
+  let min = props.min;
+  let max = props.max;
 
-  for (let i = props.min; i <= props.max; i += props.step) {
-    if (props.format === "24h") {
-      if (i < minH || i > maxH) continue;
-    } else {
-      const hour24 = props.modelValue === false ? (i % 12) + 12 : i % 12;
-      if (hour24 < minH || hour24 > maxH) continue;
-    }
+  if (props.minTime && props.maxTime && props.format !== '12h') {
+    const [minH] = props.minTime.split(":").map(Number);
+    const [maxH] = props.maxTime.split(":").map(Number);
+    min = Math.max(min, minH);
+    max = Math.min(max, maxH);
+  }
+
+  for (let i = min; i <= max; i += props.step) {
     result.push(i.toString().padStart(2, "0"));
   }
 
   return result;
 });
+onMounted(() => {
+  scrollToActiveValue();
+});
 
+function scrollToActiveValue() {
+  nextTick(() => {
+    const index = items.value.indexOf(
+      props.modelValue.toString().padStart(2, "0")
+    );
+    if (index >= 0) {
+      const itemHeight = 40;
+      gsap.to(columnRef.value, {
+        scrollTo: { y: index * itemHeight },
+        duration: 0.4,
+        ease: "back.out(1.5)",
+      });
+    }
+  });
+}
 function getItemStyle(index: number) {
   const centerIndex = selectedIndex.value;
   const distance = Math.abs(index - centerIndex);
@@ -115,7 +132,7 @@ function updateValue(index: number) {
   if (index < 0 || index >= items.value.length) return;
 
   const newValue = props.isBoolean
-    ? (index === 1)
+    ? index === 1
     : parseInt(items.value[index], 10);
   emit("update:modelValue", newValue);
 }

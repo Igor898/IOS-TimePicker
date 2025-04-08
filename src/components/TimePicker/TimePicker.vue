@@ -16,7 +16,17 @@ const emit = defineEmits<{
 }>();
 
 const isModalOpen = ref(false);
-const displayValue = computed(() => props.modelValue || "--:--");
+const displayValue = computed(() => {
+  if (!props.modelValue) return "--:--";
+  
+  if (props.format === '12h') {
+    const [hours, minutes] = props.modelValue.split(':');
+    const h12 = (parseInt(hours) % 12) || 12;
+    return `${h12}:${minutes}`;
+  }
+  
+  return props.modelValue;
+});
 
 function handleTimeSelect(time: string) {
   emit("update:modelValue", time);
@@ -41,8 +51,8 @@ function openModal() {
       v-if="isModalOpen"
       :selected-time="modelValue"
       :format="format"
-      :min-time="minTime"
-      :max-time="maxTime"
+      :minTime="minTime"
+      :maxTime="maxTime"
       :disable-outside-click="disableOutsideClick"
       @close="isModalOpen = false"
       @select="handleTimeSelect"
